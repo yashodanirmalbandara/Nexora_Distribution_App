@@ -8,6 +8,7 @@ class RoleEnum(str, enum.Enum):
     DRIVER = "driver"
     STORE_MANAGER = "store_manager"
 
+# 1. Users Model
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
@@ -15,6 +16,7 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     role = Column(String, nullable=False)
 
+# 2. Outlets Model
 class Outlet(Base):
     __tablename__ = "outlets"
     outlet_id = Column(String, primary_key=True)
@@ -27,6 +29,7 @@ class Outlet(Base):
     window_close_time = Column(String, nullable=False)
     mall_window = Column(String, nullable=True)
 
+# 3. Vehicles Model
 class Vehicle(Base):
     __tablename__ = "vehicles"
     vehicle_id = Column(String, primary_key=True)
@@ -39,6 +42,7 @@ class Vehicle(Base):
     weekly_fuel_quota_l = Column(Float, nullable=False)
     depot = Column(String, nullable=False)
 
+# 4. Orders Model
 class Order(Base):
     __tablename__ = "orders"
     delivery_id = Column(String, primary_key=True)
@@ -59,6 +63,7 @@ class Order(Base):
     deferred_yesterday = Column(Integer, default=0)
     days_since_last_served = Column(Integer, default=0)
 
+# 5. Trips Model
 class Trip(Base):
     __tablename__ = "trips"
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -68,3 +73,29 @@ class Trip(Base):
     status = Column(String, default="planned")
     shortfall_flag = Column(Boolean, default=False)
     shortfall_notes = Column(String, nullable=True)
+
+# 6. District Travel Model
+class DistrictTravel(Base):
+    __tablename__ = "district_travel"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    origin_district = Column(String, nullable=False)
+    destination_district = Column(String, nullable=False)
+    travel_time_mins = Column(Float, nullable=True)
+    distance_km = Column(Float, nullable=True)
+
+# 7. Calendar Model
+class Calendar(Base):
+    __tablename__ = "calendar"
+    date = Column(Date, primary_key=True)
+    day_of_week = Column(String, nullable=False)
+    is_working_day = Column(Boolean, default=True)
+    notes = Column(String, nullable=True)
+
+# 8. Service Allowance Model
+class ServiceAllowance(Base):
+    __tablename__ = "service_allowance"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    category = Column(String, nullable=False)
+    allowance_type = Column(String, nullable=False)
+    value = Column(Float, nullable=False)
+    unit = Column(String, nullable=True)
