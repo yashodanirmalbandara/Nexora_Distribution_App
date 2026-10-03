@@ -3,39 +3,35 @@ version: '3.8'
 services:
   db:
     image: postgres:15-alpine
-    container_name: waypoint_postgres
-    restart: always
+    container_name: nexora_db
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-waypoint_admin}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-waypoint_secure_password}
-      POSTGRES_DB: ${POSTGRES_DB:-waypoint_db}
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: nexora_db
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-waypoint_admin} -d ${POSTGRES_DB:-waypoint_db}"]
-      interval: 5s
-      timeout: 5s
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
       retries: 5
 
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: waypoint_fastapi
-    restart: always
+    build: ./backend
+    container_name: nexora_backend
     ports:
       - "8000:8000"
-    environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-waypoint_admin}:${POSTGRES_PASSWORD:-waypoint_secure_password}@db:5432/${POSTGRES_DB:-waypoint_db}
-      - SECRET_KEY=${SECRET_KEY:-default_secret_key}
-      - ALGORITHM=HS256
     depends_on:
       db:
-        condition: service_healthy
-    volumes:
-      - ./backend:/app
+        condition: service_healthy  # Ensures DB is fully accepting TCP connections first
 
-volumes:
-  postgres_data:
+  frontend:
+    build: ./frontend
+    container_name: nexora_frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+  services:
+  db:
+    ports:
+      - "5432:5432"

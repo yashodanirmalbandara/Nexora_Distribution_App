@@ -1,0 +1,127 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  DISPATCHER
+  DRIVER
+}
+
+enum VehicleStatus {
+  AVAILABLE
+  IN_USE
+  MAINTENANCE
+}
+
+enum OrderStatus {
+  UNASSIGNED
+  ASSIGNED
+  IN_TRANSIT
+  DELIVERED
+  CANCELLED
+}
+
+enum RouteStatus {
+  DRAFT
+  ASSIGNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum StopStatus {
+  PENDING
+  ARRIVED
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      Role     @default(DRIVER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  routes  Route[]   @relation("DriverRoutes")
+  vehicle Vehicle?  @relation("DriverVehicle")
+}
+
+model Vehicle {
+  id             String        @id @default(uuid())
+  plateNumber    String        @unique
+  capacityWeight Float         // Capacity in kg
+  capacityCases  Int           // Capacity in standard unit boxes/cases
+  status         VehicleStatus @default(AVAILABLE)
+  
+  driverId       String?       @unique
+  driver         User?         @relation("DriverVehicle", fields: [driverId], references: [id])
+  routes         Route[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Order {
+  id                  String      @id @default(uuid())
+  orderNumber         String      @unique
+  cases               Int
+  weight              Float
+  deliveryAddress     String
+  latitude            Float
+  longitude           Float
+  deliveryWindowStart DateTime
+  deliveryWindowEnd   DateTime
+  status              OrderStatus @default(UNASSIGNED)
+
+  // Relation to assigned stop (if routed)
+  stop Stop?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Route {
+  id        String      @id @default(uuid())
+  routeCode String      @unique
+  status    RouteStatus @default(ASSIGNED)
+  
+  driverId  String
+  driver    User        @relation("DriverRoutes", fields: [driverId], references: [id])
+  
+  vehicleId String
+  vehicle   Vehicle     @relation(fields: [vehicleId], references: [id])
+  
+  stops     Stop[]
+
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+}
+
+model Stop {
+  id            String     @id @default(uuid())
+  sequenceOrder Int
+  status        StopStatus @default(PENDING)
+  
+  routeId       String
+  route         Route      @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  
+  orderId       String     @unique
+  order         Order      @relation(fields: [orderId], references: [id])
+
+  arrivalTime    DateTime?
+  completionTime DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([routeId, sequenceOrder])
+}

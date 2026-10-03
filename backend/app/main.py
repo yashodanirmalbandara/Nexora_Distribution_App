@@ -3,31 +3,27 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1 import auth, orders, planning, loading, delivery
 
 app = FastAPI(
-    title="Waypoint Delivery System API",
-    version="1.0.0",
-    description="Backend API services supporting Dispatcher, Loader, Driver, and Store Manager workflows."
+    title="Nexora Distribution API",
+    description="Full-stack logistics management platform",
+    version="1.0.0"
 )
 
-# Enable CORS for frontend integration
+# Enable CORS for frontend requests
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # Allows all origins during local dev / hackathon evaluation
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Register all role-based API routers
-app.include_router(auth.router, prefix="/api/v1")
-app.include_router(orders.router, prefix="/api/v1")
-app.include_router(planning.router, prefix="/api/v1")
-app.include_router(loading.router, prefix="/api/v1")
-app.include_router(delivery.router, prefix="/api/v1")
+# Include API Routers
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
+app.include_router(orders.router, prefix="/api/v1/orders", tags=["Orders"])
+app.include_router(planning.router, prefix="/api/v1/planning", tags=["Planning"])
+app.include_router(loading.router, prefix="/api/v1/loading", tags=["Loading"])
+app.include_router(delivery.router, prefix="/api/v1/delivery", tags=["Delivery"])
 
 @app.get("/")
 def read_root():
-    return {"status": "online", "message": "Waypoint API is running"}
-
-@app.get("/health")
-def health_check():
-    return {"status": "healthy"}
+    return {"message": "Nexora Distribution API is running"}
