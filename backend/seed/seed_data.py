@@ -22,18 +22,9 @@ def get_file_path(filename):
     return None
 
 def seed_users():
-    if db.query(User).count() == 0:
-        default_users = [
-            User(username="dispatcher1", hashed_password="password123", role="dispatcher"),
-            User(username="loader1", hashed_password="password123", role="loader"),
-            User(username="driver1", hashed_password="password123", role="driver"),
-            User(username="manager1", hashed_password="password123", role="store_manager"),
-        ]
-        db.add_all(default_users)
-        db.commit()
-        print("✓ Seeded default users (4 rows).")
-    else:
-        print(f"✓ Users table ready ({db.query(User).count()} rows).")
+    # Users are provisioned by the real database/authentication workflow.
+    # This initializer intentionally does not create demo accounts or passwords.
+    print(f"✓ Users table ready ({db.query(User).count()} rows).")
 
 def seed_outlets():
     path = get_file_path("outlets.csv")

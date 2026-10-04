@@ -3,9 +3,8 @@ import DispatcherApp from './DispatcherApp'
 import StoreApp from './StoreApp'
 import DriverApp from './DriverApp'
 import LoaderApp from './LoaderApp'
-import OfflineDemo from './OfflineDemo'
 
-export type ActiveRole = 'dispatcher' | 'store' | 'driver' | 'loader' | 'offline'
+export type ActiveRole = 'dispatcher' | 'store' | 'driver' | 'loader'
 
 interface RoleCard {
   id: ActiveRole
@@ -59,16 +58,7 @@ const ROLES: RoleCard[] = [
     description: 'LIFO loading order verification, damage/shortage flagging, real-time sync with dispatch hub, and vehicle departure authorization.',
     deviceTarget: 'High-contrast UI for warehouse dock touch terminals',
   },
-  {
-    id: 'offline',
-    title: 'Offline Sync Engine',
-    subtitle: 'PWA Telemetry & Queue Inspector',
-    badge: 'PWA Core',
-    icon: '⚡',
-    color: 'from-violet-600 to-purple-800',
-    description: 'Simulate connection losses, inspect IndexedDB offline mutation queues, test background auto-sync, and review service worker logs.',
-    deviceTarget: 'Developer & architecture inspection environment',
-  },
+
 ]
 
 export default function MainInterface() {
@@ -171,13 +161,6 @@ export default function MainInterface() {
           />
         )}
 
-        {activeRole === 'offline' && (
-          <OfflineDemo
-            onSwitchView={() => setActiveRole('dispatcher')}
-            isDark={isDark}
-            onToggleDark={handleToggleDark}
-          />
-        )}
       </div>
     </div>
   )

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { api } from './api'
 
 type Tab = 'dashboard' | 'order' | 'history' | 'settings'
 type OrderStatus = 'delivered' | 'in-transit' | 'scheduled' | 'deferred' | 'pending'
@@ -11,34 +12,13 @@ interface ProductCategory {
 
 interface PastOrder {
   id: string; date: string; items: { name: string; qty: number; unit: string }[]
-  totalValue: number; status: OrderStatus; deferralReason?: string; deliveredAt?: string; vehicleId?: string
+  totalValue?: number; status: OrderStatus; deferralReason?: string; deliveredAt?: string; vehicleId?: string
 }
 
-const OUTLET = { id: 'OUT-001', name: 'Waypoint Fresh Colombo', brand: 'Waypoint Fresh' as const, manager: 'Dilini Rajapaksa', district: 'Colombo', phone: '+94 11 456 7890' }
-
-const INCOMING = { vehicleId: 'VH-01', plate: 'WP-CAB-7732', driver: 'Nuwan Perera', etaTime: '08:24', progress: 62, status: 'In Transit' as const, stops: 3, currentStop: 2, departedAt: '06:10' }
-
-const CATEGORIES: ProductCategory[] = [
-  { id: 'dairy', name: 'Fresh Dairy', unit: 'cases', minQty: 1, maxQty: 30, pricePerUnit: 2400, stock: 8, reorderAt: 12 },
-  { id: 'poultry', name: 'Fresh Poultry', unit: 'cases', minQty: 1, maxQty: 20, pricePerUnit: 3800, stock: 3, reorderAt: 6 },
-  { id: 'beverages', name: 'Chilled Beverages', unit: 'cases', minQty: 1, maxQty: 25, pricePerUnit: 1800, stock: 14, reorderAt: 10 },
-  { id: 'bread', name: 'Fresh Bread & Bakery', unit: 'cases', minQty: 1, maxQty: 15, pricePerUnit: 1200, stock: 5, reorderAt: 8 },
-  { id: 'desserts', name: 'Chilled Desserts', unit: 'cases', minQty: 1, maxQty: 12, pricePerUnit: 2100, stock: 4, reorderAt: 6 },
-  { id: 'eggs', name: 'Fresh Eggs', unit: 'trays', minQty: 5, maxQty: 60, pricePerUnit: 480, stock: 18, reorderAt: 20 },
-]
-
-function getRecentDateStr(daysAgo: number) {
-  const d = new Date()
-  d.setDate(d.getDate() - daysAgo)
-  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-}
-
-const PAST_ORDERS: PastOrder[] = [
-  { id: 'ORD-20261003', date: getRecentDateStr(0), items: [{ name: 'Fresh Dairy', qty: 14, unit: 'cases' }, { name: 'Fresh Poultry', qty: 5, unit: 'cases' }, { name: 'Chilled Beverages', qty: 6, unit: 'cases' }], totalValue: 68400, status: 'in-transit', vehicleId: 'VH-01' },
-  { id: 'ORD-20261002', date: getRecentDateStr(1), items: [{ name: 'Fresh Dairy', qty: 12, unit: 'cases' }, { name: 'Chilled Beverages', qty: 8, unit: 'cases' }, { name: 'Fresh Bread & Bakery', qty: 4, unit: 'cases' }], totalValue: 57600, status: 'deferred', deferralReason: 'Fleet weight capacity exceeded. Your Fresh delivery has been rescheduled to the next available run.' },
-  { id: 'ORD-20261001', date: getRecentDateStr(2), items: [{ name: 'Fresh Dairy', qty: 16, unit: 'cases' }, { name: 'Fresh Poultry', qty: 6, unit: 'cases' }, { name: 'Chilled Desserts', qty: 4, unit: 'cases' }], totalValue: 76800, status: 'delivered', deliveredAt: '07:44', vehicleId: 'VH-02' },
-  { id: 'ORD-20260930', date: getRecentDateStr(3), items: [{ name: 'Fresh Dairy', qty: 10, unit: 'cases' }, { name: 'Fresh Eggs', qty: 20, unit: 'trays' }, { name: 'Chilled Beverages', qty: 5, unit: 'cases' }], totalValue: 49800, status: 'delivered', deliveredAt: '08:12', vehicleId: 'VH-01' },
-]
+let OUTLET = { id: '', name: 'Store', brand: 'Waypoint Fresh' as const, manager: '', district: '', phone: '' }
+let INCOMING = { vehicleId: '', plate: '', driver: '', etaTime: '', progress: 0, status: 'No active delivery' as 'No active delivery' | 'In Transit', stops: 0, currentStop: 0, departedAt: '' }
+let CATEGORIES: ProductCategory[] = []
+let PAST_ORDERS: PastOrder[] = []
 
 const ISSUE_TAGS: { id: IssueType; label: string; icon: string }[] = [
   { id: 'missing', label: 'Missing Items', icon: '📦' },
@@ -181,8 +161,8 @@ function ReceiptModal({ onClose }: { onClose: () => void }) {
           <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl border border-slate-200 dark:border-slate-600 p-4">
             <div className="flex items-center justify-between mb-3">
               <div>
-                <p className="font-semibold text-slate-800 dark:text-white">VH-01 · WP-CAB-7732</p>
-                <p className="text-sm text-slate-500 dark:text-slate-400">Nuwan Perera · Arrived 08:24</p>
+                <p className="font-semibold text-slate-800 dark:text-white">{INCOMING.vehicleId || '—'} · {INCOMING.plate || '—'}</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">{INCOMING.driver || '—'} · Arrived {INCOMING.etaTime || '—'}</p>
               </div>
               <StatusPill status="delivered" />
             </div>
@@ -419,7 +399,20 @@ function OrderTab() {
               <span className="text-navy-700 dark:text-navy-300 text-base">{fmtLKR(totalValue)}</span>
             </div>
           </div>
-          <button onClick={() => setSubmitted(true)}
+          <button onClick={async () => {
+          const selected = CATEGORIES.map(c => ({ c, qty: quantities[c.id] || 0 })).filter(x => x.qty > 0)
+          if (!selected.length) return
+          try {
+            await api.createOrder({
+              delivery_id: `WEB-${Date.now()}`, order_date: new Date().toISOString().slice(0, 10),
+              outlet_id: OUTLET.id, brand: OUTLET.brand.replace('Waypoint ', ''),
+              district: OUTLET.district, depot: 'Peliyagoda', temp_requirement: 'Ambient',
+              order_units: selected.reduce((n, x) => n + x.qty, 0),
+              order_weight_kg: 0, order_volume_m3: 0, dispatch_status: 'pending'
+            })
+            setSubmitted(true)
+          } catch (err) { console.error(err) }
+        }}
             className="w-full py-4 rounded-2xl bg-navy-700 dark:bg-navy-600 hover:bg-navy-600 dark:hover:bg-navy-500 text-white font-bold text-base transition-colors active:scale-[0.98] shadow-lg shadow-navy-900/20">
             Submit Order →
           </button>
@@ -473,8 +466,8 @@ function SettingsTab() {
   const [notifications, setNotifications] = useState(true)
   const [etaAlerts, setEtaAlerts] = useState(true)
   const [smsAlerts, setSmsAlerts] = useState(false)
-  const [contactName, setContactName] = useState('Dilini Rajapaksa')
-  const [contactPhone, setContactPhone] = useState('+94 11 456 7890')
+  const [contactName, setContactName] = useState(OUTLET.manager)
+  const [contactPhone, setContactPhone] = useState(OUTLET.phone)
 
   function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
     return (
@@ -545,10 +538,37 @@ export default function StoreApp({ onSwitchView, isDark = false, onToggleDark }:
   const [tab, setTab] = useState<Tab>('dashboard')
   const [showReceipt, setShowReceipt] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
-  const notifCount = PAST_ORDERS.filter(o => o.status === 'deferred').length + 1
+  const [, refresh] = useState(0)
+  const [loadError, setLoadError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([api.getOrders(), api.getActiveRoute(), api.getOutlets()])
+      .then(([orders, route, outlets]) => {
+        if (cancelled) return
+        const outlet = outlets[0]
+        if (outlet) OUTLET = { ...OUTLET, id: outlet.outlet_id, name: outlet.brand, district: outlet.district, brand: 'Waypoint Fresh' }
+        PAST_ORDERS = orders.map(o => ({
+          id: o.delivery_id, date: o.order_date,
+          items: [{ name: `${o.brand} order`, qty: o.order_units, unit: 'units' }],
+          totalValue: undefined,
+          status: ({ delivered: 'delivered', in_transit: 'in-transit', dispatched: 'scheduled', deferred: 'deferred', pending: 'pending', assigned: 'scheduled' } as Record<string, OrderStatus>)[o.dispatch_status] || 'pending',
+          vehicleId: o.vehicle_id || undefined,
+        }))
+        const first = route.stops?.[0]
+        if (first) INCOMING = { ...INCOMING, vehicleId: route.vehicleId || '', driver: route.driverName || '', status: 'In Transit', stops: route.stops.length, currentStop: Number(first.stopNumber || 1) }
+        setLoadError(null)
+        refresh(v => v + 1)
+      })
+      .catch(err => !cancelled && setLoadError(err instanceof Error ? err.message : 'Failed to load store data'))
+    return () => { cancelled = true }
+  }, [])
+
+  const notifCount = PAST_ORDERS.filter(o => o.status === 'deferred').length
 
   const content = (
     <main className="flex-1 p-4 pb-8 overflow-y-auto">
+      {loadError && <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{loadError}</div>}
       {tab === 'dashboard' && <DashboardTab onOpenReceipt={() => setShowReceipt(true)} />}
       {tab === 'order' && <OrderTab />}
       {tab === 'history' && <HistoryTab />}
@@ -595,7 +615,7 @@ export default function StoreApp({ onSwitchView, isDark = false, onToggleDark }:
             <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-8 py-4 shrink-0 flex items-center justify-between">
               <div>
                 <h1 className="font-bold text-slate-900 dark:text-white text-xl">{TABS.find(t => t.id === tab)?.label}</h1>
-                <p className="font-mono text-xs text-slate-400 mt-0.5">Waypoint Fresh Colombo · OUT-001</p>
+                <p className="font-mono text-xs text-slate-400 mt-0.5">{OUTLET.name || 'Store'} · {OUTLET.id || '—'}</p>
               </div>
               <div className="flex items-center gap-3">
                 <div className="text-right">
@@ -612,7 +632,7 @@ export default function StoreApp({ onSwitchView, isDark = false, onToggleDark }:
                       <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700"><p className="font-semibold text-slate-800 dark:text-white text-sm">Notifications</p></div>
                       <div className="divide-y divide-slate-50 dark:divide-slate-700/60">
                         <div className="px-4 py-3 flex items-start gap-3"><span className="text-orange-500 text-lg shrink-0">⚑</span><div><p className="text-sm font-medium text-slate-700 dark:text-slate-200">Delivery Deferred</p><p className="text-xs text-slate-500 dark:text-slate-400">ORD-20261002 moved to next run</p><p className="font-mono text-[10px] text-slate-400 mt-0.5">{PAST_ORDERS[1].date}</p></div></div>
-                        <div className="px-4 py-3 flex items-start gap-3"><span className="text-blue-500 text-lg shrink-0">→</span><div><p className="text-sm font-medium text-slate-700 dark:text-slate-200">VH-01 En Route</p><p className="text-xs text-slate-500 dark:text-slate-400">ETA 08:24 · Prepare receiving staff</p><p className="font-mono text-[10px] text-slate-400 mt-0.5">Today</p></div></div>
+                        <div className="px-4 py-3 flex items-start gap-3"><span className="text-blue-500 text-lg shrink-0">→</span><div><p className="text-sm font-medium text-slate-700 dark:text-slate-200">{INCOMING.vehicleId || '—'} En Route</p><p className="text-xs text-slate-500 dark:text-slate-400">ETA {INCOMING.etaTime || '—'} · Prepare receiving staff</p><p className="font-mono text-[10px] text-slate-400 mt-0.5">Today</p></div></div>
                       </div>
                       <button onClick={() => setNotifOpen(false)} className="w-full py-3 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-mono transition-colors">Dismiss all</button>
                     </div>
@@ -653,7 +673,7 @@ export default function StoreApp({ onSwitchView, isDark = false, onToggleDark }:
                         <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700"><p className="font-semibold text-slate-800 dark:text-white text-sm">Notifications</p></div>
                         <div className="divide-y divide-slate-50 dark:divide-slate-700/60">
                           <div className="px-4 py-3 flex items-start gap-3"><span className="text-orange-500 text-lg shrink-0">⚑</span><div><p className="text-sm font-medium text-slate-700 dark:text-slate-200">Delivery Deferred</p><p className="text-xs text-slate-500 dark:text-slate-400">ORD-20261002 moved to next run</p></div></div>
-                          <div className="px-4 py-3 flex items-start gap-3"><span className="text-blue-500 text-lg shrink-0">→</span><div><p className="text-sm font-medium text-slate-700 dark:text-slate-200">VH-01 En Route · ETA 08:24</p></div></div>
+                          <div className="px-4 py-3 flex items-start gap-3"><span className="text-blue-500 text-lg shrink-0">→</span><div><p className="text-sm font-medium text-slate-700 dark:text-slate-200">{INCOMING.vehicleId || '—'} En Route · ETA 08:24</p></div></div>
                         </div>
                         <button onClick={() => setNotifOpen(false)} className="w-full py-3 text-xs text-slate-400 font-mono transition-colors">Dismiss all</button>
                       </div>

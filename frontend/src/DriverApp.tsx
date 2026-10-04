@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { api } from './api'
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
 import L from 'leaflet'
 
@@ -26,52 +27,9 @@ interface DeliveryStop {
 
 interface OfflineAction { id: string; type: string; timestamp: string; stopId: string }
 
-const VEHICLE_ID = 'VH-01'
-const PLATE = 'WP-CAB-7732'
-const DRIVER = 'Nuwan Perera'
-
-const INITIAL_STOPS: DeliveryStop[] = [
-  {
-    id: 's1', stopNo: 1, outletId: 'PLY-004', outletName: 'Keells Nugegoda', district: 'Colombo',
-    address: '45 High Level Rd, Nugegoda. Enter from Thimbirigasyaya side gate.',
-    windowStart: '06:30', windowEnd: '08:00', brand: 'Waypoint Fresh',
-    tags: [{ type: 'fresh_cutoff', label: 'Fresh 08:00 cutoff' }, { type: 'rear_dock', label: 'Use Rear Dock B' }],
-    items: [
-      { id: 'a1', description: 'Fresh Dairy — Full Cream Milk 1L', cases: 14, weightKg: 168 },
-      { id: 'a2', description: 'Fresh Dairy — Cheese Sliced 200g', cases: 6, weightKg: 42 },
-      { id: 'a3', description: 'Chilled Beverages — Mixed Juice 1L', cases: 6, weightKg: 72 },
-      { id: 'a4', description: 'Fresh Poultry — Whole Chicken 1.2kg', cases: 5, weightKg: 78 },
-      { id: 'a5', description: 'Fresh Eggs — Free Range Dozen', cases: 2, weightKg: 30 },
-    ],
-    status: 'active',
-  },
-  {
-    id: 's2', stopNo: 2, outletId: 'MGM-011', outletName: 'Cargills Maharagama', district: 'Colombo',
-    address: '112 Highlevel Rd, Maharagama. Loading bay at basement — ramp on left.',
-    windowStart: '08:30', windowEnd: '10:00', brand: 'Waypoint Fresh',
-    tags: [{ type: 'mall_bay', label: 'Mall Bay 02 — Basement' }, { type: 'van_only', label: 'Van-only parking' }],
-    items: [
-      { id: 'b1', description: 'Fresh Dairy — Full Cream Milk 1L', cases: 10, weightKg: 120 },
-      { id: 'b2', description: 'Fresh Dairy — Butter Salted 250g', cases: 6, weightKg: 54 },
-      { id: 'b3', description: 'Chilled Beverages — Fresh Orange 500ml', cases: 5, weightKg: 60 },
-      { id: 'b4', description: 'Fresh Poultry — Boneless Chicken 500g', cases: 4, weightKg: 48 },
-    ],
-    status: 'upcoming',
-  },
-  {
-    id: 's3', stopNo: 3, outletId: 'KDY-007', outletName: 'Keells Kandy City', district: 'Central',
-    address: 'Dalada Veediya, Kandy. Access via Temple St. Contact store manager on arrival.',
-    windowStart: '10:30', windowEnd: '12:00', brand: 'Waypoint Fresh',
-    tags: [{ type: 'van_only', label: 'Van-only — no truck access' }, { type: 'no_park', label: 'No roadside parking — call ahead' }],
-    items: [
-      { id: 'c1', description: 'Fresh Dairy — Full Cream Milk 1L', cases: 6, weightKg: 72 },
-      { id: 'c2', description: 'Fresh Dairy — Low-Fat Yoghurt 500g', cases: 4, weightKg: 42 },
-      { id: 'c3', description: 'Chilled Juices — Mixed Tropical 330ml', cases: 3, weightKg: 36 },
-      { id: 'c4', description: 'Chilled Desserts — Mixed Pudding Cups', cases: 4, weightKg: 42 },
-    ],
-    status: 'upcoming',
-  },
-]
+const VEHICLE_ID = '—'
+const PLATE = '—'
+const DRIVER = '—'
 
 function nowTime() { return new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) }
 
@@ -97,19 +55,6 @@ function tagIcon(type: StopTag['type']) {
 
 function QRReferenceInput({ onRefReceived, receivedRef }: { onRefReceived: (ref: string) => void; receivedRef: string | null }) {
   const [manualRef, setManualRef] = useState('')
-  const [scanning, setScanning] = useState(false)
-
-  function simulateScan() {
-    setScanning(true)
-    setTimeout(() => {
-      const today = new Date()
-      const dateStr = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`
-      const ref = `REF-${dateStr}-${String(Math.floor(Math.random() * 90000) + 10000)}`
-      setScanning(false)
-      onRefReceived(ref)
-    }, 1800)
-  }
-
   function handleManual() {
     const trimmed = manualRef.trim().toUpperCase()
     if (trimmed.startsWith('REF-') && trimmed.length >= 14) onRefReceived(trimmed)
@@ -129,43 +74,6 @@ function QRReferenceInput({ onRefReceived, receivedRef }: { onRefReceived: (ref:
 
   return (
     <div className="space-y-3">
-      <button onClick={simulateScan} disabled={scanning}
-        className={`w-full flex items-center justify-center gap-3 py-5 rounded-2xl border-2 border-dashed transition-all active:scale-[0.98] ${
-          scanning ? 'border-teal-400 dark:border-teal-600 bg-teal-50 dark:bg-teal-900/20' : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 hover:border-teal-400 dark:hover:border-teal-500'
-        }`}>
-        {scanning ? (
-          <>
-            <div className="w-6 h-6 rounded-full border-2 border-teal-500 border-t-transparent animate-spin" />
-            <span className="font-semibold text-teal-700 dark:text-teal-300">Scanning QR Code…</span>
-          </>
-        ) : (
-          <>
-            <div className="w-10 h-10 bg-slate-100 dark:bg-slate-700 rounded-xl flex items-center justify-center">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                <rect x="2" y="2" width="9" height="9" rx="1" stroke="currentColor" strokeWidth="1.5" className="text-slate-500" />
-                <rect x="4" y="4" width="5" height="5" rx="0.5" fill="currentColor" className="text-slate-500" />
-                <rect x="13" y="2" width="9" height="9" rx="1" stroke="currentColor" strokeWidth="1.5" className="text-slate-500" />
-                <rect x="15" y="4" width="5" height="5" rx="0.5" fill="currentColor" className="text-slate-500" />
-                <rect x="2" y="13" width="9" height="9" rx="1" stroke="currentColor" strokeWidth="1.5" className="text-slate-500" />
-                <rect x="4" y="15" width="5" height="5" rx="0.5" fill="currentColor" className="text-slate-500" />
-                <rect x="13" y="13" width="2" height="2" fill="currentColor" className="text-slate-500" />
-                <rect x="16" y="13" width="2" height="2" fill="currentColor" className="text-slate-500" />
-                <rect x="19" y="13" width="3" height="2" fill="currentColor" className="text-slate-500" />
-                <rect x="13" y="16" width="2" height="2" fill="currentColor" className="text-slate-500" />
-                <rect x="16" y="16" width="2" height="5" fill="currentColor" className="text-slate-500" />
-                <rect x="19" y="17" width="3" height="2" fill="currentColor" className="text-slate-500" />
-                <rect x="13" y="19" width="5" height="3" fill="currentColor" className="text-slate-500" />
-                <rect x="19" y="20" width="3" height="2" fill="currentColor" className="text-slate-500" />
-              </svg>
-            </div>
-            <div className="text-left">
-              <p className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Scan Store QR Code</p>
-              <p className="font-mono text-[10px] text-slate-400">Tap to open camera and scan the store's delivery QR</p>
-            </div>
-          </>
-        )}
-      </button>
-
       <div className="flex items-center gap-2 my-1">
         <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
         <span className="font-mono text-[10px] text-slate-400 px-2">or enter manually</span>
@@ -428,28 +336,40 @@ function ActiveStopScreen({ stop, offlineActions, onBack, onStatusUpdate }: {
 export default function DriverApp({ onSwitchView, isDark = false, onToggleDark }: {
   onSwitchView: () => void; isDark?: boolean; onToggleDark?: () => void
 }) {
-  const [stops, setStops] = useState<DeliveryStop[]>(INITIAL_STOPS)
+  const [stops, setStops] = useState<DeliveryStop[]>([])
   const [activeStopId, setActiveStopId] = useState<string | null>(null)
   const [connection, setConnection] = useState<ConnectionState>('online')
   const [offlineActions, setOfflineActions] = useState<OfflineAction[]>([])
   const [battery] = useState(78)
   const [signal] = useState(3)
   const [time, setTime] = useState(new Date())
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => { const t = setInterval(() => setTime(new Date()), 1000); return () => clearInterval(t) }, [])
   useEffect(() => {
-    const t = setTimeout(() => setConnection('offline'), 8000)
-    const t2 = setTimeout(() => setConnection('syncing'), 14000)
-    const t3 = setTimeout(() => setConnection('online'), 17000)
-    return () => { clearTimeout(t); clearTimeout(t2); clearTimeout(t3) }
+    let cancelled = false
+    api.getActiveRoute().then(route => {
+      if (cancelled) return
+      const mapped: DeliveryStop[] = (route.stops || []).map((s: any, i: number) => ({
+        id: s.deliveryId || `${s.storeId}-${i}`, stopNo: Number(s.stopNumber || i + 1), outletId: s.storeId,
+        outletName: s.storeName, district: s.district || '', address: 'Address not available in database',
+        windowStart: s.windowStart || '—', windowEnd: s.windowEnd || '—',
+        brand: 'Waypoint Fresh', tags: [], items: [], status: s.deliveryStatus === 'COMPLETED' ? 'completed' : i === 0 ? 'active' : 'upcoming',
+      }))
+      setStops(mapped)
+      setConnection('online')
+      setLoadError(null)
+    }).catch(err => !cancelled && setLoadError(err instanceof Error ? err.message : 'Failed to load route'))
+    return () => { cancelled = true }
   }, [])
 
   function handleStatusUpdate(stopId: string, status: StopStatus, extra?: Partial<DeliveryStop>) {
     setStops(prev => prev.map(s => s.id === stopId ? { ...s, status, ...extra } : s))
-    if (connection !== 'online') {
+    if (status === 'completed') {
+      void api.completeStop(stopId).catch(err => setLoadError(err instanceof Error ? err.message : 'Failed to complete delivery'))
+    } else if (connection !== 'online') {
       setOfflineActions(prev => [...prev, { id: crypto.randomUUID(), type: `status:${status}`, timestamp: nowTime(), stopId }])
     }
-    if (connection === 'online') setOfflineActions([])
   }
 
   const activeStop = stops.find(s => s.id === activeStopId)
@@ -461,6 +381,7 @@ export default function DriverApp({ onSwitchView, isDark = false, onToggleDark }
       <div className="min-h-[100dvh] bg-slate-200 dark:bg-slate-950 sm:flex sm:items-center sm:justify-center sm:p-6">
         <div className="h-[100dvh] sm:h-[min(844px,calc(100dvh-3rem))] w-full sm:max-w-[400px] flex flex-col bg-slate-50 dark:bg-slate-900 overflow-hidden sm:rounded-[2rem] sm:border-[6px] sm:border-slate-900 dark:sm:border-slate-700 sm:shadow-2xl" style={{ fontFamily: "'Inter', sans-serif" }}>
 
+          {loadError && <div className="mx-4 mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{loadError}</div>}
           <div className="bg-slate-900 dark:bg-slate-950 text-white px-4 pt-3 pb-2.5 shrink-0">
             <div className="flex items-center justify-between mb-2">
               <div className={`flex items-center gap-1.5 text-xs font-mono font-medium rounded-full px-2.5 py-1 ${
@@ -528,28 +449,9 @@ export default function DriverApp({ onSwitchView, isDark = false, onToggleDark }
               </div>
 
               <div className="mx-4 mt-3 shrink-0 rounded-xl overflow-hidden border border-slate-700 h-[220px]">
-                <MapContainer 
-                  center={[6.8721, 79.8886]} 
-                  zoom={10} 
-                  style={{ height: '100%', width: '100%' }}
-                >
-                  <TileLayer
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    attribution='&copy; OpenStreetMap contributors'
-                  />
-                  <Marker position={[6.9678, 79.8897]}>
-                    <Popup><strong>Depot</strong> - Peliyagoda Hub</Popup>
-                  </Marker>
-                  <Marker position={[6.8721, 79.8886]}>
-                    <Popup><strong>Stop 1: PLY-004</strong><br />Keells Nugegoda (Active)</Popup>
-                  </Marker>
-                  <Marker position={[6.8481, 79.9267]}>
-                    <Popup><strong>Stop 2: MGM-011</strong><br />Cargills Maharagama</Popup>
-                  </Marker>
-                  <Marker position={[7.2906, 80.6337]}>
-                    <Popup><strong>Stop 3: KDY-002</strong><br />Kandy Outlet</Popup>
-                  </Marker>
-                </MapContainer>
+                <div className="h-full flex items-center justify-center bg-slate-100 dark:bg-slate-800 text-center px-6">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Live map coordinates are not stored for these outlets in the database.</p>
+                </div>
               </div>
 
               {offlineActions.length > 0 && (

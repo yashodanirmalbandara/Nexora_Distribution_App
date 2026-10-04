@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { api } from './api'
 
 type ItemStatus = 'pending' | 'loaded' | 'flagged'
 type BrandLabel = 'Waypoint Fresh' | 'Waypoint Style' | 'Waypoint Tech'
@@ -17,45 +18,7 @@ interface LoadStop {
 
 interface FlaggerState { stopId: number; itemId: string; itemDesc: string }
 
-const VEHICLE = { id: 'VH-01', plate: 'WP-CAB-7732', driver: 'Nuwan Perera', depot: 'Peliyagoda', bay: 'Bay 3', type: 'Refrigerated', maxWeight: 3000, maxVolume: 12.0, trip: 1 }
-
-const INITIAL_STOPS: LoadStop[] = [
-  {
-    loadingOrder: 1, deliveryStop: 3, outletId: 'KDY-007', outletName: 'Keells Kandy City Centre',
-    district: 'Central', brand: 'Waypoint Fresh', volumeM3: 0.9, weightKg: 210, expanded: true,
-    items: [
-      { id: 'i1a', description: 'Fresh Dairy — Full Cream Milk 1L', cases: 6, weightKg: 72, status: 'pending' },
-      { id: 'i1b', description: 'Fresh Dairy — Low-Fat Yoghurt 500g', cases: 4, weightKg: 42, status: 'pending' },
-      { id: 'i1c', description: 'Chilled Juices — Mixed Tropical 330ml', cases: 3, weightKg: 36, status: 'pending' },
-      { id: 'i1d', description: 'Fresh Bread — Artisan Loaves', cases: 2, weightKg: 18, status: 'pending' },
-      { id: 'i1e', description: 'Chilled Desserts — Mixed Pudding Cups', cases: 4, weightKg: 42, status: 'pending' },
-    ],
-  },
-  {
-    loadingOrder: 2, deliveryStop: 2, outletId: 'MGM-011', outletName: 'Cargills Maharagama',
-    district: 'Colombo', brand: 'Waypoint Fresh', volumeM3: 1.3, weightKg: 310, expanded: false,
-    items: [
-      { id: 'i2a', description: 'Fresh Dairy — Full Cream Milk 1L', cases: 10, weightKg: 120, status: 'pending' },
-      { id: 'i2b', description: 'Fresh Dairy — Butter Salted 250g', cases: 6, weightKg: 54, status: 'pending' },
-      { id: 'i2c', description: 'Chilled Beverages — Fresh Orange 500ml', cases: 5, weightKg: 60, status: 'pending' },
-      { id: 'i2d', description: 'Fresh Poultry — Boneless Chicken 500g', cases: 4, weightKg: 48, status: 'pending' },
-      { id: 'i2e', description: 'Chilled Desserts — Fruit Trifle 300g', cases: 3, weightKg: 28, status: 'pending' },
-    ],
-  },
-  {
-    loadingOrder: 3, deliveryStop: 1, outletId: 'PLY-004', outletName: 'Keells Nugegoda',
-    district: 'Colombo', brand: 'Waypoint Fresh', volumeM3: 1.8, weightKg: 420, expanded: false,
-    items: [
-      { id: 'i3a', description: 'Fresh Dairy — Full Cream Milk 1L', cases: 14, weightKg: 168, status: 'pending' },
-      { id: 'i3b', description: 'Fresh Dairy — Cheese Sliced 200g', cases: 6, weightKg: 42, status: 'pending' },
-      { id: 'i3c', description: 'Chilled Beverages — Mixed Juice 1L', cases: 6, weightKg: 72, status: 'pending' },
-      { id: 'i3d', description: 'Fresh Poultry — Whole Chicken 1.2kg', cases: 5, weightKg: 78, status: 'pending' },
-      { id: 'i3e', description: 'Chilled Dips & Spreads — Hummus 200g', cases: 4, weightKg: 30, status: 'pending' },
-      { id: 'i3f', description: 'Fresh Eggs — Free Range Dozen', cases: 2, weightKg: 30, status: 'pending' },
-    ],
-  },
-]
-
+const VEHICLE = { id: '—', plate: '—', driver: '—', depot: '—', bay: '—', type: '—', maxWeight: 0, maxVolume: 0, trip: '—' }
 const FLAG_TAGS: FlagTag[] = ['Missing Item', 'Damaged Packaging', 'Wrong SKU', 'Quantity Short']
 
 function brandColors(brand: BrandLabel, dark: boolean) {
@@ -307,11 +270,31 @@ function StopCard({ stop, isDark, onToggleExpand, onToggleItem, onFlagItem }: {
 export default function LoaderApp({ onSwitchView, isDark = false, onToggleDark }: {
   onSwitchView: () => void; isDark?: boolean; onToggleDark?: () => void
 }) {
-  const [stops, setStops] = useState<LoadStop[]>(INITIAL_STOPS)
+  const [stops, setStops] = useState<LoadStop[]>([])
   const [flagger, setFlagger] = useState<FlaggerState | null>(null)
   const [showDispatch, setShowDispatch] = useState(false)
   const [dispatched, setDispatched] = useState(false)
   const [syncPulse, setSyncPulse] = useState(false)
+  const [tripId, setTripId] = useState<string | null>(null)
+  const [vehicleId, setVehicleId] = useState('—')
+  const [vehiclePlate, setVehiclePlate] = useState('—')
+  const [loadError, setLoadError] = useState<string | null>(null)
+
+  useEffect(() => {
+    api.getLoadingManifests().then(manifests => {
+      const manifest = manifests[0]
+      if (!manifest) { setStops([]); return }
+      setTripId(manifest.tripId)
+      setVehicleId(manifest.vehicleId || '—')
+      setVehiclePlate(manifest.vehiclePlate || manifest.vehicleId || '—')
+      setStops((manifest.items || []).map((item: any, i: number) => ({
+        loadingOrder: i + 1, deliveryStop: i + 1, outletId: item.id, outletName: item.description,
+        district: '', brand: 'Waypoint Fresh', volumeM3: 0, weightKg: Number(item.weightKg || 0), expanded: i === 0,
+        items: [{ id: item.id, description: item.description, cases: Number(item.qty || 0), weightKg: Number(item.weightKg || 0),
+          status: item.loaded ? 'loaded' : 'pending' }],
+      })))
+    }).catch(err => setLoadError(err instanceof Error ? err.message : 'Failed to load manifest'))
+  }, [])
 
   const totalWeight = stops.reduce((s, st) => s + st.weightKg, 0)
   const totalVolume = stops.reduce((s, st) => s + st.volumeM3, 0)
@@ -330,7 +313,11 @@ export default function LoaderApp({ onSwitchView, isDark = false, onToggleDark }
   function submitFlag(stopId: number, itemId: string, tags: FlagTag[], note: string) {
     setStops(prev => prev.map(s => { if (s.loadingOrder !== stopId) return s; return { ...s, items: s.items.map(i => { if (i.id !== itemId) return i; return { ...i, status: 'flagged' as ItemStatus, flagTags: tags, flagNote: note } }) } }))
   }
-  function handleSync() { setSyncPulse(true); setTimeout(() => setSyncPulse(false), 1500) }
+  function handleSync() { setSyncPulse(true); api.getLoadingManifests().finally(() => setSyncPulse(false)) }
+  function confirmDispatch() {
+    if (!tripId) return
+    void api.dispatchTrip(tripId).then(() => setDispatched(true)).catch(err => setLoadError(err instanceof Error ? err.message : 'Dispatch failed'))
+  }
 
   const rootBg = isDark ? 'bg-[#0a1220]' : 'bg-slate-100'
   const headerBg = isDark ? 'bg-[#0d1827] border-slate-700/50' : 'bg-white border-slate-200'
@@ -349,19 +336,20 @@ export default function LoaderApp({ onSwitchView, isDark = false, onToggleDark }
 
   return (
     <div className={`min-h-[100dvh] ${rootBg} text-slate-100 flex flex-col`} style={{ fontFamily: "'Inter', sans-serif" }}>
+      {loadError && <div className="mx-4 mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700">{loadError}</div>}
       <header className={`sticky top-0 z-40 ${headerBg} border-b shadow-lg`}>
         <div className="px-5 py-3 flex items-center gap-3">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <span className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>📍</span>
-              <span className={`font-mono text-xs uppercase tracking-widest truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{VEHICLE.depot} Loading Dock — {VEHICLE.bay}</span>
+              <span className={`font-mono text-xs uppercase tracking-widest truncate ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Loading Dock</span>
             </div>
-            <div className={`font-bold text-base truncate mt-0.5 ${textPrimary}`}>Trip {VEHICLE.trip} · {VEHICLE.plate}</div>
+            <div className={`font-bold text-base truncate mt-0.5 ${textPrimary}`}>Trip {tripId || '—'} · {vehiclePlate}</div>
           </div>
 
           <div className={`shrink-0 flex items-center gap-2 ${vehicleBadgeBg} border rounded-xl px-3 py-2`}>
             <span className={`font-mono text-[10px] uppercase tracking-widest ${isDark ? 'text-teal-400' : 'text-teal-600'}`}>Vehicle</span>
-            <span className={`font-mono font-bold text-sm ${isDark ? 'text-teal-200' : 'text-teal-700'}`}>{VEHICLE.id}</span>
+            <span className={`font-mono font-bold text-sm ${isDark ? 'text-teal-200' : 'text-teal-700'}`}>{vehicleId}</span>
           </div>
 
           <button onClick={handleSync} className={`shrink-0 flex items-center gap-2 ${syncBtnBg} border rounded-xl px-3 py-2 active:scale-95 transition-all`}>

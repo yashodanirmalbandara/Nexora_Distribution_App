@@ -4,7 +4,7 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 
 raw_url = os.getenv(
     "DATABASE_URL", 
-    "postgresql://waypoint_admin:waypoint_secure_password@db:5432/waypoint_db"
+    "postgresql://postgres:postgrespassword@db:5432/nexora_db"
 )
 
 # Convert generic postgresql:// to explicit postgresql+psycopg2://

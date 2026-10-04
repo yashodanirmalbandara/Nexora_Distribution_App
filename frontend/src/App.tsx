@@ -4,7 +4,6 @@ import DispatcherApp from './DispatcherApp'
 import LoaderApp from './LoaderApp'
 import DriverApp from './DriverApp'
 import StoreApp from './StoreApp'
-import OfflineDemo from './OfflineDemo'
 import { ROLE_IDS, type Role } from './types'
 
 const THEME_KEY = 'waypoint-theme'
@@ -39,7 +38,6 @@ export default function App() {
     try { localStorage.setItem(THEME_KEY, isDark ? 'dark' : 'light') } catch { /* ignore */ }
   }, [isDark])
 
-  const select = useCallback((r: Role) => { window.location.hash = `/${r}` }, [])
   const home = useCallback(() => { window.location.hash = '' }, [])
   const toggleDark = useCallback(() => setIsDark(d => !d), [])
 
@@ -50,7 +48,6 @@ export default function App() {
     case 'loader':       return <LoaderApp {...shared} />
     case 'driver':       return <DriverApp {...shared} />
     case 'store':        return <StoreApp {...shared} />
-    case 'offline-demo': return <OfflineDemo isDark={isDark} onToggleDark={toggleDark} onBack={home} />
-    default:             return <MainInterface onSelect={select} isDark={isDark} onToggleDark={toggleDark} />
+    default:             return <MainInterface />
   }
 }

@@ -1,12 +1,9 @@
 import { useState, useEffect } from 'react'
+import { api, type BackendOrder, type BackendVehicle } from './api'
 import ThemeToggle from './components/ThemeToggle'
 import {
   NAV_ITEMS,
   REASON_CODES,
-  SEED_ORDERS,
-  SEED_VEHICLES,
-  SEED_DEFERRALS,
-  SEED_COMPLETED_TRIPS,
   type BrandTab,
   type CompletedTrip,
   type DeferralEntry,
@@ -59,12 +56,12 @@ function FuelBar({ used, quota }: { used: number; quota: number }) {
   )
 }
 
-function Sidebar({ active, onNavigate, collapsed, onToggle, onSwitchView, pendingConfirmations, mobileOpen }: {
+function Sidebar({ active, onNavigate, collapsed, onToggle, onSwitchView, pendingConfirmations, mobileOpen, pendingOrders, deferredOrders }: {
   active: NavItem; onNavigate: (id: NavItem) => void; collapsed: boolean; onToggle: () => void
-  onSwitchView?: () => void; pendingConfirmations: number; mobileOpen: boolean
+  onSwitchView?: () => void; pendingConfirmations: number; mobileOpen: boolean; pendingOrders: number; deferredOrders: number
 }) {
-  const pendingCount = SEED_ORDERS.filter(o => o.status === 'Unassigned').length
-  const deferredCount = SEED_ORDERS.filter(o => o.status === 'Deferred').length
+  const pendingCount = pendingOrders
+  const deferredCount = deferredOrders
   const badges: Partial<Record<NavItem, number>> = {
     'order-queue': pendingCount, 'deferrals': deferredCount,
     'delivery-confirmation': pendingConfirmations,
@@ -908,10 +905,47 @@ export default function DispatcherApp({ onSwitchView, isDark = false, onToggleDa
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [search, setSearch] = useState('')
-  const [orders, setOrders] = useState<Order[]>(SEED_ORDERS)
-  const [vehicles] = useState<Vehicle[]>(SEED_VEHICLES)
-  const [deferrals, setDeferrals] = useState<DeferralEntry[]>(SEED_DEFERRALS)
-  const [completedTrips, setCompletedTrips] = useState<CompletedTrip[]>(SEED_COMPLETED_TRIPS)
+  const [orders, setOrders] = useState<Order[]>([])
+  const [vehicles, setVehicles] = useState<Vehicle[]>([])
+  const [deferrals, setDeferrals] = useState<DeferralEntry[]>([])
+  const [completedTrips, setCompletedTrips] = useState<CompletedTrip[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([api.getOrders(), api.getVehicles()])
+      .then(([dbOrders, dbVehicles]) => {
+        if (cancelled) return
+        const mappedOrders: Order[] = dbOrders.map((o: BackendOrder) => ({
+          id: o.delivery_id,
+          outletId: o.outlet_id,
+          district: o.district,
+          brand: (o.brand === 'Fresh' ? 'Waypoint Fresh' : o.brand === 'Style' ? 'Waypoint Style' : o.brand === 'Tech' ? 'Waypoint Tech' : o.brand) as BrandTab,
+          tempReq: String(o.temp_requirement).toLowerCase().includes('reefer') || String(o.temp_requirement).toLowerCase().includes('fresh') ? 'Reefer' : 'Ambient',
+          volume: o.order_volume_m3,
+          weight: o.order_weight_kg,
+          status: ({ pending: 'Unassigned', assigned: 'Assigned', deferred: 'Deferred', delivered: 'Delivered', dispatched: 'Assigned', in_transit: 'Assigned' } as Record<string, OrderStatus>)[o.dispatch_status] || 'Unassigned',
+          vehicleId: o.vehicle_id || undefined,
+          tripNo: o.trip_id ? ((o.trip_id % 2 ? 1 : 2) as 1 | 2) : undefined,
+          deferredYesterday: Boolean(o.deferred_yesterday),
+        }))
+        const mappedVehicles: Vehicle[] = dbVehicles.map((v: BackendVehicle) => ({
+          id: v.vehicle_id, plate: v.vehicle_id, driver: 'Unassigned', type: v.type.toLowerCase().includes('van') ? 'Small Van' : v.temp.toLowerCase().includes('reefer') ? 'Refrigerated' : 'Dry-box',
+          tempType: v.temp.toLowerCase().includes('reefer') ? 'Reefer' : 'Ambient',
+          depot: v.depot as Vehicle['depot'], maxWeight: v.weight_cap_kg, maxVolume: v.volume_cap_m3,
+          availability: 'Available', fuelUsed: 0, fuelQuota: v.weekly_fuel_quota_l, routeProgress: 0, trip1Orders: [], trip2Orders: [], eta: '—',
+        }))
+        setOrders(mappedOrders)
+        setVehicles(mappedVehicles)
+        setDeferrals(mappedOrders.filter(o => o.status === 'Deferred').map(o => ({
+          orderId: o.id, outletId: o.outletId, brand: o.brand, district: o.district, weight: o.weight,
+          reasonCode: 'DB_DEFERRED', note: 'Deferred status from database', timestamp: '', deferredYesterday: Boolean(o.deferredYesterday),
+        })))
+        setLoadError(null)
+      })
+      .catch(err => !cancelled && setLoadError(err instanceof Error ? err.message : 'Failed to load backend data'))
+    return () => { cancelled = true }
+  }, [])
   const [allocationModalId, setAllocationModalId] = useState<string | null>(null)
   const [deferralModalId, setDeferralModalId] = useState<string | null>(null)
 
@@ -927,6 +961,8 @@ export default function DispatcherApp({ onSwitchView, isDark = false, onToggleDa
   function confirmAllocation(vehicleId: string, trip: 1 | 2) {
     if (!allocationModalId) return
     setOrders(prev => prev.map(o => o.id === allocationModalId ? { ...o, status: 'Assigned' as OrderStatus, vehicleId, tripNo: trip } : o))
+    void api.updateOrder(allocationModalId, { dispatch_status: 'assigned', vehicle_id: vehicleId, trip_id: trip })
+      .catch(err => setLoadError(err instanceof Error ? err.message : 'Allocation failed'))
   }
 
   function confirmDeferral(reasonCode: string, note: string) {
@@ -935,6 +971,8 @@ export default function DispatcherApp({ onSwitchView, isDark = false, onToggleDa
     if (!order) return
     const now = new Date()
     setOrders(prev => prev.map(o => o.id === deferralModalId ? { ...o, status: 'Deferred' as OrderStatus } : o))
+    void api.updateOrder(deferralModalId, { dispatch_status: 'deferred' })
+      .catch(err => setLoadError(err instanceof Error ? err.message : 'Deferral failed'))
     setDeferrals(prev => [{ orderId: order.id, outletId: order.outletId, brand: order.brand, district: order.district, weight: order.weight, reasonCode, note, timestamp: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`, deferredYesterday: false }, ...prev])
   }
 
@@ -961,12 +999,13 @@ export default function DispatcherApp({ onSwitchView, isDark = false, onToggleDa
         {mobileOpen && <div className="fixed inset-0 z-40 bg-slate-900/60 lg:hidden" onClick={() => setMobileOpen(false)} aria-hidden />}
         <Sidebar active={nav} onNavigate={id => { setNav(id); setMobileOpen(false) }} collapsed={collapsed && !mobileOpen}
           onToggle={() => { if (mobileOpen) setMobileOpen(false); else setCollapsed(c => !c) }}
-          onSwitchView={onSwitchView} pendingConfirmations={pendingConfirmations} mobileOpen={mobileOpen} />
+          onSwitchView={onSwitchView} pendingConfirmations={pendingConfirmations} mobileOpen={mobileOpen} pendingOrders={orders.filter(o => o.status === 'Unassigned').length} deferredOrders={orders.filter(o => o.status === 'Deferred').length} />
 
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <Header search={search} onSearch={setSearch} isDark={isDark} onToggleDark={onToggleDark ?? (() => {})} onMenu={() => setMobileOpen(true)} />
 
           <main className="flex-1 overflow-auto lg:overflow-hidden p-3 sm:p-4">
+            {loadError && <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">{loadError}</div>}
             {isSplitView ? (
               <div className="flex flex-col lg:flex-row gap-4 lg:h-full min-w-0">
                 <div className="w-full lg:w-[60%] h-[70dvh] min-h-[420px] lg:h-auto lg:min-h-0 shrink-0 lg:shrink bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col">

@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.v1 import auth, orders, planning, loading, delivery
+from app.api.v1 import auth, orders, planning, loading, delivery, fleet
 
 app = FastAPI(
     title="Nexora Distribution API",
@@ -23,6 +23,7 @@ app.include_router(orders.router, prefix="/api/v1/orders", tags=["Orders"])
 app.include_router(planning.router, prefix="/api/v1/planning", tags=["Planning"])
 app.include_router(loading.router, prefix="/api/v1/loading", tags=["Loading"])
 app.include_router(delivery.router, prefix="/api/v1/delivery", tags=["Delivery"])
+app.include_router(fleet.router, prefix="/api/v1/fleet", tags=["Fleet"])
 
 @app.get("/")
 def read_root():
